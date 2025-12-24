@@ -42,7 +42,43 @@ def preprocess_video(input_path, target_fps=3):
         print(f"Error optimizing video: {e}")
         return input_path # Fallback to original
 
-def analyze_video(video_path, prompt_file='gemini_prompt.md', model_name='gemini-3-flash-preview', optimize=True):
+def get_video_duration(video_path):
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", 
+             "-of", "default=noprint_wrappers=1:nokey=1", video_path], 
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        return float(result.stdout)
+    except Exception as e:
+        print(f"Could not determine video duration: {e}")
+        return 60.0
+
+def generate_telemetry(duration_sec, start_gps, end_gps):
+    """Generates a simple linear interpolation of GPS coordinates."""
+    if not start_gps or not end_gps:
+        return ""
+    
+    try:
+        lat1, lon1 = map(float, start_gps.split(','))
+        lat2, lon2 = map(float, end_gps.split(','))
+    except ValueError:
+        print("Error parsing GPS coordinates. Use format 'lat,lon'")
+        return ""
+        
+    telemetry = "Timestamp (sec), Latitude, Longitude\n"
+    # Generate point every second
+    steps = int(duration_sec) + 1
+    
+    for i in range(steps):
+        t = i / max(1, duration_sec)
+        lat = lat1 + (lat2 - lat1) * t
+        lon = lon1 + (lon2 - lon1) * t
+        telemetry += f"{i}, {lat:.6f}, {lon:.6f}\n"
+        
+    return telemetry
+
+def analyze_video(video_path, prompt_file='gemini_prompt.md', model_name='gemini-3-flash-preview', optimize=True, start_gps=None, end_gps=None):
     """
     Analyzes video using Gemini API via direct REST calls with inline Base64 data.
     This method is preferred for Gemini 3 Preview which has issues with File API for videos.
@@ -79,6 +115,13 @@ def analyze_video(video_path, prompt_file='gemini_prompt.md', model_name='gemini
     # 3. Read Prompt
     with open(prompt_file, 'r', encoding='utf-8') as f:
         prompt_text = f.read()
+
+    # Inject Telemetry if GPS provided
+    if start_gps and end_gps:
+        duration = get_video_duration(video_to_upload)
+        print(f"Generating telemetry for {duration:.1f}s video ({start_gps} -> {end_gps})...")
+        telemetry = generate_telemetry(duration, start_gps, end_gps)
+        prompt_text += f"\n\n## TELEMETRY LOG (GPS)\n{telemetry}"
 
     # 4. Construct Request
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -155,5 +198,8 @@ if __name__ == "__main__":
     
     parser.add_argument("--no-optimize", action="store_true", help="Skip video optimization (FPS reduction)")
     
+    parser.add_argument("--start_gps", type=str, help="Start GPS coords 'lat,lon'")
+    parser.add_argument("--end_gps", type=str, help="End GPS coords 'lat,lon'")
+    
     args = parser.parse_args()
-    analyze_video(args.video, model_name=args.model, optimize=not args.no_optimize)
+    analyze_video(args.video, model_name=args.model, optimize=not args.no_optimize, start_gps=args.start_gps, end_gps=args.end_gps)

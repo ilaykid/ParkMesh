@@ -1,0 +1,9 @@
+/.env
+/.vscode
+/README.md
+/analysis_00a0f008-a315437f.mov.json
+/app.py
+/debug_full.py
+/detection.py
+/processed_00a0f008-a315437f.mp4
+/spatial_analysis.py

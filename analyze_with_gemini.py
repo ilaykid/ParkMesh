@@ -78,7 +78,7 @@ def generate_telemetry(duration_sec, start_gps, end_gps):
         
     return telemetry
 
-def analyze_video(video_path, prompt_file='gemini_prompt.md', model_name='gemini-3-flash-preview', optimize=True, start_gps=None, end_gps=None):
+def analyze_video(video_path, prompt_file='gemini_prompt.md', model_name='gemini-3-flash-preview', optimize=True, target_fps=3, start_gps=None, end_gps=None):
     """
     Analyzes video using Gemini API via direct REST calls with inline Base64 data.
     This method is preferred for Gemini 3 Preview which has issues with File API for videos.
@@ -92,7 +92,7 @@ def analyze_video(video_path, prompt_file='gemini_prompt.md', model_name='gemini
     # 1. Optimize Video
     # Justification: Inline data has size limits (~20MB). Optimization ensures we fit.
     if optimize:
-        video_to_upload = preprocess_video(video_path)
+        video_to_upload = preprocess_video(video_path, target_fps=target_fps)
     else:
         video_to_upload = video_path
 
@@ -198,8 +198,9 @@ if __name__ == "__main__":
     
     parser.add_argument("--no-optimize", action="store_true", help="Skip video optimization (FPS reduction)")
     
+    parser.add_argument("--fps", type=int, default=3, help="Target FPS for video optimization (default: 3)")
     parser.add_argument("--start_gps", type=str, help="Start GPS coords 'lat,lon'")
     parser.add_argument("--end_gps", type=str, help="End GPS coords 'lat,lon'")
     
     args = parser.parse_args()
-    analyze_video(args.video, model_name=args.model, optimize=not args.no_optimize, start_gps=args.start_gps, end_gps=args.end_gps)
+    analyze_video(args.video, model_name=args.model, optimize=not args.no_optimize, target_fps=args.fps, start_gps=args.start_gps, end_gps=args.end_gps)

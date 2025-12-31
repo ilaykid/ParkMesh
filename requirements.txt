@@ -2,3 +2,4 @@ google-genai
 python-dotenv
 opencv-python
 numpy
+nuscenes-devkit

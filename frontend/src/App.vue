@@ -24,7 +24,7 @@
               </div>
               <p class="card-desc">Identify where your journey began on the map.</p>
               <div class="map-wrapper">
-                <MapPicker @select="onCoordsSelect" />
+                <MapPicker v-model="coords" />
               </div>
               <div v-if="coords" class="coords-display">
                 <NavigationIcon size="16" />
@@ -37,8 +37,28 @@
                 <VideoIcon />
                 <h3>Footage</h3>
               </div>
-              <p class="card-desc">Drag & drop your dashcam MP4/MOV file.</p>
-              <VideoUpload @file-selected="onFileSelected" />
+              <p class="card-desc">Drag & drop your dashcam MP4/MOV file or browse the dataset.</p>
+              
+              <div class="file-selection-area">
+                <VideoUpload v-if="!selectedPreset" @file-selected="onFileSelected" />
+                <div v-else class="preset-selection glass-panel">
+                  <div class="preset-info">
+                    <DatabaseIcon class="text-primary" size="24" />
+                    <div>
+                      <div class="preset-label">Scenario #{{ selectedPreset.id }}</div>
+                      <div class="preset-file">{{ selectedPreset.filename }}</div>
+                    </div>
+                  </div>
+                  <button class="btn-text" @click="clearPreset">Change</button>
+                </div>
+              </div>
+
+              <div class="or-separator">OR</div>
+
+              <button class="btn-secondary dataset-btn" @click="showExplorer = true">
+                <DatabaseIcon size="18" />
+                Browse Demo Scenarios
+              </button>
               
               <button 
                 class="btn-primary analyze-btn" 
@@ -79,6 +99,8 @@
     <footer class="main-footer">
       Created for Google Gemini Hackathon 2025
     </footer>
+
+    <PresetExplorer v-if="showExplorer" @close="showExplorer = false" @select="onPresetSelect" />
   </div>
 </template>
 
@@ -89,22 +111,24 @@ import {
   MapPin as MapIcon, 
   Video as VideoIcon, 
   Navigation as NavigationIcon,
-  Sparkles as SparklesIcon
+  Sparkles as SparklesIcon,
+  Database as DatabaseIcon
 } from 'lucide-vue-next'
 import MapPicker from './components/MapPicker.vue'
 import VideoUpload from './components/VideoUpload.vue'
 import AnalysisDashboard from './components/AnalysisDashboard.vue'
+import PresetExplorer from './components/PresetExplorer.vue'
 
 const state = ref('idle') // idle, processing, results
 const coords = ref(null)
 const selectedFile = ref(null)
+const selectedPreset = ref(null)
+const showExplorer = ref(false)
 const progress = ref(0)
 const statusMsg = ref('Initializing...')
 const taskId = ref(null)
 const analysisResult = ref(null)
 const videoUrl = ref('')
-
-const canStart = computed(() => coords.value && selectedFile.value)
 
 const onCoordsSelect = (c) => {
   coords.value = c
@@ -112,7 +136,25 @@ const onCoordsSelect = (c) => {
 
 const onFileSelected = (file) => {
   selectedFile.value = file
+  selectedPreset.value = null
 }
+
+const onPresetSelect = (video) => {
+  selectedPreset.value = video
+  selectedFile.value = null
+  showExplorer.value = false
+  // Auto-fill GPS if available
+  if (video.gps) {
+    const [lat, lng] = video.gps.start.split(',').map(Number)
+    coords.value = { lat, lng }
+  }
+}
+
+const clearPreset = () => {
+  selectedPreset.value = null
+}
+
+const canStart = computed(() => coords.value && (selectedFile.value || selectedPreset.value))
 
 const startAnalysis = async () => {
   if (!canStart.value) return
@@ -121,16 +163,24 @@ const startAnalysis = async () => {
   progress.value = 10
   statusMsg.value = 'Uploading video to secure processing node...'
   
-  const formData = new FormData()
-  formData.append('video', selectedFile.value)
-  formData.append('start_gps', `${coords.value.lat},${coords.value.lng}`)
-  
   try {
-    const response = await axios.post('http://localhost:8000/upload', formData)
+    let response;
+    if (selectedPreset.value) {
+      const formData = new FormData()
+      formData.append('video_id', selectedPreset.value.id)
+      formData.append('start_gps', `${coords.value.lat},${coords.value.lng}`)
+      response = await axios.post('http://localhost:8000/process-preset', formData)
+    } else {
+      const formData = new FormData()
+      formData.append('video', selectedFile.value)
+      formData.append('start_gps', `${coords.value.lat},${coords.value.lng}`)
+      response = await axios.post('http://localhost:8000/upload', formData)
+    }
+    
     taskId.value = response.data.task_id
     pollStatus()
   } catch (err) {
-    alert('Upload failed: ' + err.message)
+    alert('Analysis trigger failed: ' + err.message)
     state.value = 'idle'
   }
 }
@@ -292,6 +342,85 @@ const reset = () => {
 
 .sparkle {
   animation: rotate 3s linear infinite;
+}
+
+.dataset-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.dataset-btn:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: var(--primary);
+}
+
+.or-separator {
+  text-align: center;
+  margin: 1.5rem 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  position: relative;
+}
+
+.or-separator::before,
+.or-separator::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 40%;
+  height: 1px;
+  background: rgba(255,255,255,0.1);
+}
+
+.or-separator::before { left: 0; }
+.or-separator::after { right: 0; }
+
+.preset-selection {
+  padding: 1.5rem;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--primary);
+  background: rgba(66, 133, 244, 0.05) !important;
+}
+
+.preset-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.preset-label {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.preset-file {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.btn-text {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-decoration: underline;
+}
+
+.btn-text:hover {
+  color: white;
 }
 
 @keyframes rotate {

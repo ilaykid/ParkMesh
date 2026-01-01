@@ -11,6 +11,16 @@
         </div>
       </div>
       <div class="header-stats">
+        <div class="toggle-group glass-panel">
+          <label class="switch-label">
+            <input type="checkbox" v-model="showSpots" @change="toggleSpots">
+            <span class="label-text">Show Spots</span>
+          </label>
+          <label class="switch-label">
+            <input type="checkbox" v-model="showPath" @change="togglePath">
+            <span class="label-text">Travel Path</span>
+          </label>
+        </div>
         <div class="stat-card glass-panel">
           <span class="stat-value">{{ result.spots.length }}</span>
           <span class="stat-label">Vacant Spots</span>
@@ -58,18 +68,21 @@
             :key="idx"
             class="spot-item"
             :class="{ active: currentSpotIdx === idx }"
-            @click="seekTo(spot.timestamp_start)"
+            @click="onSpotClick(idx)"
           >
-            <div class="spot-icon">
-              <CheckCircleIcon v-if="spot.confidence > 0.8" class="text-accent" />
-              <InfoIcon v-else class="text-warning" />
+            <div class="spot-thumbnail" v-if="spot.frame_url">
+              <img :src="'http://localhost:8000' + spot.frame_url" alt="Spot frame" />
+              <div class="play-overlay"><PlayIcon size="20" /></div>
             </div>
-            <div class="spot-details">
-              <div class="spot-time">{{ spot.timestamp_start }} - {{ spot.timestamp_end }}</div>
+            <div class="spot-content">
+              <div class="spot-header">
+                <div class="spot-time">{{ spot.timestamp_start }} - {{ spot.timestamp_end }}</div>
+                <CheckCircleIcon v-if="spot.confidence > 0.8" class="text-accent" size="16" />
+              </div>
               <div class="spot-reason">{{ spot.reasoning }}</div>
               <div class="spot-meta">
-                <span class="conf">Confidence: {{ (spot.confidence * 100).toFixed(0) }}%</span>
-                <span class="coord">{{ spot.coordinates.lat.toFixed(5) }}, {{ spot.coordinates.lon.toFixed(5) }}</span>
+                <span class="conf">{{ (spot.confidence * 100).toFixed(0) }}% cert</span>
+                <span class="coord">{{ spot.coordinates.lat.toFixed(4) }}, {{ spot.coordinates.lon.toFixed(4) }}</span>
               </div>
             </div>
           </div>
@@ -85,7 +98,8 @@ import {
   ArrowLeft as ArrowLeftIcon, 
   CheckCircle as CheckCircleIcon,
   Info as InfoIcon,
-  MapPin as MapPinIcon
+  MapPin as MapPinIcon,
+  Play as PlayIcon
 } from 'lucide-vue-next'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 
@@ -99,9 +113,15 @@ const emit = defineEmits(['reset'])
 const videoPlayer = ref(null)
 const resultsMapRef = ref(null)
 const currentSpotIdx = ref(-1)
+const showSpots = ref(true)
+const showPath = ref(true)
+
 let map = null
 let markers = []
-let Marker, Animation, SymbolPath
+let carMarker = null
+let pathPolyline = null
+let activeInfoWindow = null
+let Marker, Animation, SymbolPath, PinClass
 
 const getPercentage = (timestamp) => {
   if (!videoPlayer.value || !videoPlayer.value.duration) return 0
@@ -119,6 +139,20 @@ const seekTo = (timestamp) => {
 
 const onTimeUpdate = () => {
   const cur = videoPlayer.value.currentTime
+  const duration = videoPlayer.value.duration || 1
+  
+  // Update Car Marker on Map (Interpolated Path)
+  if (carMarker && props.result.path) {
+    const fraction = cur / duration
+    const pathLen = props.result.path.length
+    const targetIdx = Math.floor(fraction * (pathLen - 1))
+    const pos = props.result.path[targetIdx]
+    carMarker.position = pos
+    if (currentSpotIdx.value === -1) {
+      map.panTo(pos)
+    }
+  }
+
   const idx = props.result.spots.findIndex(s => {
     const start = s.timestamp_start.split(':')
     const startSec = parseInt(start[0]) * 60 + parseInt(start[1])
@@ -132,12 +166,45 @@ const onTimeUpdate = () => {
     if (idx !== -1 && map) {
       const spot = props.result.spots[idx]
       map.panTo({ lat: spot.coordinates.lat, lng: spot.coordinates.lon })
+      showSpotInfo(idx)
       if (markers[idx] && Animation) {
         markers[idx].setAnimation(Animation.BOUNCE)
         setTimeout(() => markers[idx].setAnimation(null), 1500)
       }
     }
   }
+}
+
+const onSpotClick = (idx) => {
+  const spot = props.result.spots[idx]
+  seekTo(spot.timestamp_start)
+  map.setZoom(19)
+  map.panTo({ lat: spot.coordinates.lat, lng: spot.coordinates.lon })
+  showSpotInfo(idx)
+}
+
+const showSpotInfo = (idx) => {
+  if (activeInfoWindow) activeInfoWindow.close()
+  const spot = props.result.spots[idx]
+  const content = `
+    <div style="color: #000; padding: 10px; max-width: 220px; font-family: sans-serif;">
+      <img src="http://localhost:8000${spot.frame_url}" style="width: 100%; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" />
+      <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px; color: #1a73e8;">Spot Found! (${spot.timestamp_start})</div>
+      <div style="font-size: 13px; line-height: 1.4; color: #3c4043;">${spot.reasoning}</div>
+      <div style="margin-top: 8px; font-size: 11px; color: #70757a;">Confidence: ${(spot.confidence * 100).toFixed(0)}%</div>
+    </div>
+  `
+  // We imported InfoWindow from library in onMounted, but we need it here. 
+  // Let's use the property from the map or just the global since its loaded.
+  activeInfoWindow = new google.maps.InfoWindow({
+    content: content,
+  })
+  
+  activeInfoWindow.open({
+    anchor: markers[idx],
+    map: map,
+    shouldFocus: false,
+  })
 }
 
 const mapStyles = [
@@ -155,11 +222,13 @@ onMounted(async () => {
     version: "weekly",
   })
 
-  const { Map } = await importLibrary("maps")
-  const markerLib = await importLibrary("marker")
-  Marker = markerLib.Marker
-  Animation = markerLib.Animation
-  SymbolPath = markerLib.SymbolPath
+  const { Map, Polyline, InfoWindow } = await importLibrary("maps")
+  const { AdvancedMarkerElement, PinElement } = await importLibrary("marker")
+  
+  Marker = AdvancedMarkerElement
+  PinClass = PinElement // Assign to a local-scope variable but keep the global-ish for access
+  Animation = google.maps.Animation // Bounce still works on traditional markers or via CSS in Advanced
+  SymbolPath = google.maps.SymbolPath
   
   const initialCenter = props.result.spots.length > 0 
     ? { lat: props.result.spots[0].coordinates.lat, lng: props.result.spots[0].coordinates.lon }
@@ -167,28 +236,65 @@ onMounted(async () => {
 
   map = new Map(resultsMapRef.value, {
     center: initialCenter,
-    zoom: 16,
+    zoom: 17,
     styles: mapStyles,
     disableDefaultUI: true,
   })
 
+  // Draw Path Polyline
+  if (props.result.path) {
+    pathPolyline = new Polyline({
+      path: props.result.path,
+      geodesic: true,
+      strokeColor: "#4285F4",
+      strokeOpacity: 0.8,
+      strokeWeight: 4,
+      map: map
+    })
+  }
+
+  // Add Car Tracker Marker
+  carMarker = new Marker({
+    position: initialCenter,
+    map: map,
+    icon: {
+      path: SymbolPath.FORWARD_CLOSED_ARROW,
+      scale: 6,
+      fillColor: "#ffffff",
+      fillOpacity: 1,
+      strokeWeight: 2,
+      strokeColor: "#4285F4",
+    },
+  })
+
+  // Add Spot Markers
   props.result.spots.forEach((spot, i) => {
-    const marker = new Marker({
+    // Create a custom "P" pin
+    const pin = new PinElement({
+      background: "#34A853",
+      borderColor: "#ffffff",
+      glyph: "P",
+      glyphColor: "#ffffff",
+      scale: 1,
+    })
+
+    const marker = new AdvancedMarkerElement({
       position: { lat: spot.coordinates.lat, lng: spot.coordinates.lon },
       map: map,
       title: `Spot ${i+1}`,
-      icon: {
-        path: SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: "#34A853",
-        fillOpacity: 1,
-        strokeWeight: 2,
-        strokeColor: "#ffffff",
-      }
+      content: pin.element
     })
     markers.push(marker)
   })
 })
+
+const toggleSpots = () => {
+  markers.forEach(m => m.setMap(showSpots.value ? map : null))
+}
+
+const togglePath = () => {
+  if (pathPolyline) pathPolyline.setMap(showPath.value ? map : null)
+}
 </script>
 
 <style scoped>
@@ -230,6 +336,34 @@ onMounted(async () => {
 
 .back-btn:hover {
   background: var(--panel-border);
+}
+
+.header-stats {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.toggle-group {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 16px;
+}
+
+.switch-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.switch-label input {
+  accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
 }
 
 .stat-card {
@@ -315,20 +449,58 @@ onMounted(async () => {
 }
 
 .spot-item {
-  min-width: 300px;
+  min-width: 320px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--panel-border);
   border-radius: 16px;
-  padding: 1.25rem;
+  overflow: hidden;
   display: flex;
-  gap: 1rem;
+  flex-direction: column;
   cursor: pointer;
   transition: all 0.3s;
 }
 
-.spot-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  transform: translateY(-4px);
+.spot-thumbnail {
+  position: relative;
+  height: 140px;
+  overflow: hidden;
+}
+
+.spot-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s;
+}
+
+.spot-item:hover .spot-thumbnail img {
+  transform: scale(1.1);
+}
+
+.play-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.spot-item:hover .play-overlay {
+  opacity: 1;
+}
+
+.spot-content {
+  padding: 1.25rem;
+}
+
+.spot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
 }
 
 .spot-item.active {

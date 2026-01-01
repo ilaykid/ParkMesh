@@ -22,11 +22,12 @@ Analyze the provided video clip and output a list of precise timestamps (or fram
 
 ## Geolocation & Logic
 1.  **Telemetry Context**: You will be provided with a text log of GPS coordinates synced to the video timestamps.
-2.  **Verification**: Use visible street signs, shop names, or landmarks to verify if the GPS data seems consistent with the visual environment (e.g. if GPS says "Ibn Gvirol", searching for shops visible in the frame).
-3.  **Spot Localization**: For each detected parking spot, interpolate the precise latitude/longitude based on the spot's timestamp and the provided telemetry log.
+2.  **Verification**: Use visible street signs, shop names, or landmarks to verify consistency.
+3.  **Spot Localization**: For each detected parking spot, interpolate the precise latitude/longitude based on the spot's timestamp and the provided telemetry log. 
+4.  **Travel Path tracking**: Output a `travel_path` array. This array MUST contain exactly one entry per second of the video (e.g., if the video is 10s, return 11 points). Use the coordinates from the provided TELEMETRY LOG. Do not invent coordinates. If you believe the telemetry is slightly off, stick to it anyway for consistency unless it's a major error.
 
 ## Output Format
-Return the result strictly as a JSON object. Do not add markdown framing or extra text.
+Return the result strictly as a JSON object.
 
 ```json
 {
@@ -39,9 +40,14 @@ Return the result strictly as a JSON object. Do not add markdown framing or extr
         "lat": 32.0853,
         "lon": 34.7812
       },
-      "reasoning": "Clear gap between red truck and silver sedan. No bus lane markings.",
+      "reasoning": "Clear gap between red truck and silver sedan.",
       "frame_sample": 150
     }
+  ],
+  "travel_path": [
+    {"lat": 32.0853, "lng": 34.7812},
+    {"lat": 32.0854, "lng": 34.7813},
+    {"lat": 32.0855, "lng": 34.7814}
   ],
   "summary": "Found 1 valid spot and ignored 1 bus lane segment."
 }

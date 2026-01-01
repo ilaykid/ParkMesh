@@ -86,7 +86,7 @@ def extract_frame(video_path, timestamp_str, output_path):
         print(f"Failed to extract frame at {timestamp_str}: {e}")
         return None
 
-def analyze_video(video_path, prompt_file='gemini_prompt.md', model_name='gemini-3-flash-preview', optimize=True, target_fps=3, start_gps=None, end_gps=None):
+def analyze_video(video_path, prompt_file='gemini_prompt.md', model_name='gemini-3-flash-preview', optimize=True, target_fps=5, start_gps=None, end_gps=None):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         print("Error: GEMINI_API_KEY not found.")

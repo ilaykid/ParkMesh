@@ -2,7 +2,7 @@
   <div class="app-container">
     <header class="main-header">
       <div class="logo">
-        <span class="gemini-gradient">ParkLens</span>
+        <span class="gemini-gradient">ParkMesh</span>
         <span class="version-tag">powered by Gemini</span>
       </div>
     </header>
@@ -13,7 +13,7 @@
         <div v-if="state === 'idle'" class="initial-layout" key="idle">
           <div class="hero-section">
             <h1 class="hero-title">Predictive <span class="gemini-gradient">Parking</span> Intelligence</h1>
-            <p class="hero-subtitle">Upload your Dashcam footage and let Gemini 2.0 Flash analyze the curbside for vacant spots.</p>
+            <p class="hero-subtitle">Upload your Dashcam footage and let Gemini 3.0 Flash analyze the curbside for vacant spots.</p>
           </div>
 
           <div class="setup-grid">
@@ -97,7 +97,7 @@
     </main>
 
     <footer class="main-footer">
-      Created for Google Gemini Hackathon 2025
+      Created for Google Gemini Hackathon 2026
     </footer>
 
     <PresetExplorer v-if="showExplorer" @close="showExplorer = false" @select="onPresetSelect" />

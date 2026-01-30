@@ -155,7 +155,7 @@ def analyze_video(video_path, prompt_file='gemini_prompt.md', model_name='gemini
         print(f"Request failed: {e}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ParkLens Gemini Analyzer")
+    parser = argparse.ArgumentParser(description="ParkMesh Gemini Analyzer")
     parser.add_argument("--video", type=str, required=True)
     parser.add_argument("--model", type=str, default="gemini-3-flash-preview")
     parser.add_argument("--no-optimize", action="store_true")

@@ -1,4 +1,4 @@
-# ParkLens Frontend
+# ParkMesh Frontend
 
 A premium Vue 3 dashboard for parking spot analysis using Gemini 2.0.
 

@@ -15,7 +15,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
+import { importLibrary } from '@googlemaps/js-api-loader'
 import { Search as SearchIcon } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -71,16 +71,10 @@ const placeMarker = (position, silent = false) => {
     marker.value.map = null
   }
 
-  const pin = new PinClass({
-    background: "#4285F4",
-    borderColor: "#ffffff",
-    scale: 1.2,
-  })
-
   marker.value = new MarkerClass({
     position,
     map: mapInstance,
-    content: pin.element,
+    title: "Selected Location"
   })
 
   if (!silent) {
@@ -103,29 +97,21 @@ watch(() => props.modelValue, (newVal) => {
 }, { deep: true })
 
 onMounted(async () => {
-  setOptions({
-    apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-    version: "weekly",
-  })
-
   try {
     const { Map } = await importLibrary("maps")
-    const { AdvancedMarkerElement, PinElement } = await importLibrary("marker")
+    const { Marker } = await importLibrary("marker")
     const { Autocomplete } = await importLibrary("places")
     
-    MarkerClass = AdvancedMarkerElement
-    PinClass = PinElement
+    MarkerClass = google.maps.Marker
 
     const initialCenter = props.modelValue || { lat: 32.0853, lng: 34.7818 }
 
     mapInstance = new Map(mapRef.value, {
       center: initialCenter,
       zoom: 15,
-      // mapId: "DEMO_MAP_ID",
       disableDefaultUI: false,
       zoomControl: true,
       gestureHandling: "greedy",
-      styles: mapStyles,
     })
 
     if (props.modelValue) {

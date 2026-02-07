@@ -16,10 +16,6 @@
             <input type="checkbox" v-model="showSpots" @change="toggleSpots">
             <span class="label-text">Show Spots</span>
           </label>
-          <label class="switch-label">
-            <input type="checkbox" v-model="showPath" @change="togglePath">
-            <span class="label-text">Travel Path</span>
-          </label>
         </div>
         <div class="stat-card glass-panel">
           <span class="stat-value">{{ result.spots.length }}</span>
@@ -101,7 +97,7 @@ import {
   MapPin as MapPinIcon,
   Play as PlayIcon
 } from 'lucide-vue-next'
-import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
+import { importLibrary } from '@googlemaps/js-api-loader'
 
 const props = defineProps({
   result: Object,
@@ -114,7 +110,6 @@ const videoPlayer = ref(null)
 const resultsMapRef = ref(null)
 const currentSpotIdx = ref(-1)
 const showSpots = ref(true)
-const showPath = ref(true)
 
 const getApiUrl = (path) => {
   const base = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -146,17 +141,6 @@ const onTimeUpdate = () => {
   const cur = videoPlayer.value.currentTime
   const duration = videoPlayer.value.duration || 1
   
-  // Update Car Marker on Map (Interpolated Path)
-  if (carMarker && props.result.path) {
-    const fraction = cur / duration
-    const pathLen = props.result.path.length
-    const targetIdx = Math.floor(fraction * (pathLen - 1))
-    const pos = props.result.path[targetIdx]
-    carMarker.position = pos
-    if (currentSpotIdx.value === -1) {
-      map.panTo(pos)
-    }
-  }
 
   const idx = props.result.spots.findIndex(s => {
     const start = s.timestamp_start.split(':')
@@ -212,27 +196,13 @@ const showSpotInfo = (idx) => {
   })
 }
 
-const mapStyles = [
-  { elementType: "geometry", stylers: [{ color: "#212121" }] },
-  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
-  { featureType: "road", elementType: "geometry.fill", stylers: [{ color: "#2c2c2c" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] },
-]
+const mapStyles = [] // Use default official Google look
 
 onMounted(async () => {
-  setOptions({
-    apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-    version: "weekly",
-  })
-
   const { Map, Polyline, InfoWindow } = await importLibrary("maps")
-  const { AdvancedMarkerElement, PinElement } = await importLibrary("marker")
+  const { Marker } = await importLibrary("marker")
   
-  Marker = AdvancedMarkerElement
-  PinClass = PinElement // Assign to a local-scope variable but keep the global-ish for access
-  Animation = google.maps.Animation // Bounce still works on traditional markers or via CSS in Advanced
+  Animation = google.maps.Animation
   SymbolPath = google.maps.SymbolPath
   
   const initialCenter = props.result.spots.length > 0 
@@ -242,53 +212,23 @@ onMounted(async () => {
   map = new Map(resultsMapRef.value, {
     center: initialCenter,
     zoom: 17,
-    styles: mapStyles,
-    disableDefaultUI: true,
+    disableDefaultUI: false,
+    mapTypeControl: true,
+    streetViewControl: true,
+    fullscreenControl: true,
   })
 
-  // Draw Path Polyline
-  if (props.result.path) {
-    pathPolyline = new Polyline({
-      path: props.result.path,
-      geodesic: true,
-      strokeColor: "#4285F4",
-      strokeOpacity: 0.8,
-      strokeWeight: 4,
-      map: map
-    })
-  }
-
-  // Add Car Tracker Marker
-  carMarker = new Marker({
-    position: initialCenter,
-    map: map,
-    icon: {
-      path: SymbolPath.FORWARD_CLOSED_ARROW,
-      scale: 6,
-      fillColor: "#ffffff",
-      fillOpacity: 1,
-      strokeWeight: 2,
-      strokeColor: "#4285F4",
-    },
-  })
 
   // Add Spot Markers
   props.result.spots.forEach((spot, i) => {
-    // Create a custom "P" pin
-    const pin = new PinElement({
-      background: "#34A853",
-      borderColor: "#ffffff",
-      glyph: "P",
-      glyphColor: "#ffffff",
-      scale: 1,
-    })
-
-    const marker = new AdvancedMarkerElement({
+    const marker = new google.maps.Marker({
       position: { lat: spot.coordinates.lat, lng: spot.coordinates.lon },
       map: map,
       title: `Spot ${i+1}`,
-      content: pin.element
+      label: "P"
     })
+    
+    marker.addListener("click", () => showSpotInfo(i))
     markers.push(marker)
   })
 })
@@ -297,9 +237,6 @@ const toggleSpots = () => {
   markers.forEach(m => m.setMap(showSpots.value ? map : null))
 }
 
-const togglePath = () => {
-  if (pathPolyline) pathPolyline.setMap(showPath.value ? map : null)
-}
 </script>
 
 <style scoped>

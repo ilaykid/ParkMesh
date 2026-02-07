@@ -198,12 +198,17 @@ def run_analysis(task_id: str, video_path: str, start_gps: str):
     ]
     
     try:
+        print(f"Starting analysis for task {task_id} with video: {actual_video_path}")
         process = subprocess.run(cmd, capture_output=True, text=True)
-        
+        print(f"Analysis process finished with return code {process.returncode}")
+        if process.stdout: print(f"STDOUT: {process.stdout[:500]}...")
+        if process.stderr: print(f"STDERR: {process.stderr}")
+
         # Files created by script:
         # 1. analysis_<basename>.json
         # 2. processed_<basename>.mp4
-        base = os.path.basename(video_path)
+        # CRITICAL: base must match what analyze_with_gemini.py uses (os.path.basename(actual_video_path))
+        base = os.path.basename(actual_video_path)
         raw_json = f"analysis_{base}.json"
         raw_video = f"processed_{os.path.splitext(base)[0]}.mp4"
         

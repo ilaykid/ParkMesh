@@ -2,6 +2,7 @@
   <div class="app-container">
     <header class="main-header">
       <div class="logo">
+        <img src="/favicon.svg" alt="ParkMesh Logo" class="header-logo" />
         <span class="gemini-gradient">ParkMesh</span>
         <span class="version-tag">powered by Gemini</span>
       </div>
@@ -246,6 +247,12 @@ const reset = () => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.header-logo {
+  height: 40px;
+  width: auto;
+  filter: drop-shadow(0 0 5px rgba(0, 170, 255, 0.3));
 }
 
 .version-tag {

@@ -1,5 +1,10 @@
 google-genai
 python-dotenv
-opencv-python
+opencv-python-headless
 numpy
-nuscenes-devkit
+ultralytics
+fastapi
+uvicorn
+python-multipart
+requests
+supabase

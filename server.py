@@ -8,6 +8,11 @@ import json
 import subprocess
 from typing import Optional
 import shutil
+import requests
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
@@ -19,6 +24,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Supabase Configuration
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "videos")
+SHOW_LOCAL_PRESETS = os.getenv("SHOW_LOCAL_PRESETS", "false").lower() == "true"
+
+supabase: Optional[Client] = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print(f"Supabase initialized for URL: {SUPABASE_URL}")
+    except Exception as e:
+        print(f"Failed to initialize Supabase: {e}")
+else:
+    print("Supabase URL or Key missing in .env")
 
 UPLOAD_DIR = "uploads"
 RESULTS_DIR = "results"
@@ -40,60 +62,103 @@ if os.path.exists(PRESET_DATA_BASE):
 @app.get("/presets/thumbnail/{video_id}")
 async def get_preset_thumbnail(video_id: str):
     """Generates and returns a thumbnail for a preset video."""
-    video_path = os.path.join(PRESET_DATA_BASE, f"test/camera_videos/{video_id}.mp4")
     thumb_path = os.path.join(RESULTS_DIR, f"thumb_{video_id}.jpg")
     
-    if not os.path.exists(video_path):
-        return {"error": "Video not found"}
+    if os.path.exists(thumb_path):
+        return FileResponse(thumb_path)
+        
+    # Find the video source (local or cloud)
+    video_path = None
     
-    if not os.path.exists(thumb_path):
-        # Extract 1st frame
-        cmd = ["ffmpeg", "-y", "-i", video_path, "-frames:v", "1", "-vcodec", "mjpeg", thumb_path]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # 1. Check local fallback
+    local_path = os.path.join(PRESET_DATA_BASE, f"test/camera_videos/{video_id}.mp4")
+    if os.path.exists(local_path):
+        video_path = local_path
     
-    return FileResponse(thumb_path)
+    # 2. Check Supabase if local not found
+    elif supabase:
+        try:
+            # We assume the filename matches video_id + .mp4 or .mov
+            for ext in ['.mp4', '.mov']:
+                filename = f"{video_id}{ext}"
+                url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(filename)
+                # Verify if exists by trying to get headers
+                print(f"Checking cloud video for thumbnail: {url}")
+                head = requests.head(url)
+                if head.status_code == 200:
+                    print(f"Found cloud video: {filename}, using for thumbnail extraction")
+                    video_path = url
+                    break
+        except Exception as e:
+            print(f"Thumb generation cloud check error: {e}")
+
+    if not video_path:
+        return {"error": "Video source not found"}
+    
+    # Extract 1st frame
+    # ffmpeg can take a URL as input!
+    print(f"Running FFmpeg to extract thumbnail from: {video_path}")
+    cmd = ["ffmpeg", "-y", "-i", video_path, "-frames:v", "1", "-vcodec", "mjpeg", thumb_path]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"FFmpeg error: {res.stderr}")
+    
+    if os.path.exists(thumb_path):
+        return FileResponse(thumb_path)
+    return {"error": "Failed to generate thumbnail"}
 
 @app.get("/presets/list")
 async def list_presets():
-    """Lists videos from the local dataset with their GPS data."""
-    if not os.path.exists(PRESET_DATA_BASE):
-        return []
-    
+    """Lists videos from Supabase storage or local fallback."""
     videos = []
-    data_dir = os.path.join(PRESET_DATA_BASE, "test")
-    cam_dir = os.path.join(data_dir, "camera_videos")
-    gps_dir = os.path.join(data_dir, "gps_jsons")
     
-    if os.path.exists(cam_dir):
-        for f in os.listdir(cam_dir):
-            if f.endswith(".mp4"):
-                video_id = os.path.splitext(f)[0]
-                json_path = os.path.join(gps_dir, video_id + ".json")
-                
-                gps_data = None
-                display_gps = ""
-                if os.path.exists(json_path):
-                    with open(json_path, 'r') as jf:
-                        gps_raw = json.load(jf)
-                        locations = gps_raw.get("locations", [])
-                        if locations:
-                            lat, lon = locations[0]['latitude'], locations[0]['longitude']
-                            display_gps = f"{lat:.4f}, {lon:.4f}"
-                            gps_data = {
-                                "start": f"{lat},{lon}",
-                                "end": f"{locations[-1]['latitude']},{locations[-1]['longitude']}",
-                                "points": [{"lat": l["latitude"], "lng": l["longitude"]} for l in locations]
-                            }
-                
-                videos.append({
-                    "id": video_id,
-                    "filename": f,
-                    "url": f"/preset-footage/{f}",
-                    "thumbnail": f"/presets/thumbnail/{video_id}",
-                    "display_gps": display_gps,
-                    "gps": gps_data
-                })
-    return sorted(videos, key=lambda x: int(x["id"]) if x["id"].isdigit() else x["id"])
+    # Try fetching from Supabase first
+    if supabase:
+        try:
+            res = supabase.storage.from_(SUPABASE_BUCKET).list()
+            print(f"Raw Supabase list result: {res}")
+            for item in res:
+                if item['name'].endswith(('.mp4', '.mov')):
+                    video_id = os.path.splitext(item['name'])[0]
+                    # Generate public URL
+                    video_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(item['name'])
+                    videos.append({
+                        "id": video_id,
+                        "filename": item['name'],
+                        "url": video_url,
+                        "thumbnail": f"/presets/thumbnail/{video_id}", # Still using local thumb cache
+                        "display_gps": "Berkeley, CA (Demo)",
+                        "gps": {
+                            "start": "37.8715,-122.2730",
+                            "display": "Berkeley Area"
+                        }
+                    })
+            if videos:
+                print(f"Found {len(videos)} videos in Supabase bucket '{SUPABASE_BUCKET}'")
+                return sorted(videos, key=lambda x: x["id"])
+            else:
+                print(f"No videos found in Supabase bucket '{SUPABASE_BUCKET}'")
+        except Exception as e:
+            print(f"Supabase list error: {e}")
+
+    # Fallback to local directory (if flag enabled or Supabase failed)
+    if SHOW_LOCAL_PRESETS and os.path.exists(PRESET_DATA_BASE):
+        print("Checking local presets (SHOW_LOCAL_PRESETS is True)")
+        data_dir = os.path.join(PRESET_DATA_BASE, "test")
+        cam_dir = os.path.join(data_dir, "camera_videos")
+        if os.path.exists(cam_dir):
+            for f in os.listdir(cam_dir):
+                if f.endswith(".mp4"):
+                    video_id = os.path.splitext(f)[0]
+                    videos.append({
+                        "id": video_id,
+                        "filename": f,
+                        "url": f"/preset-footage/{f}",
+                        "thumbnail": f"/presets/thumbnail/{video_id}",
+                        "display_gps": "Local Dataset",
+                        "gps": None
+                    })
+    return sorted(videos, key=lambda x: x["id"])
 
 tasks = {}
 
@@ -103,15 +168,30 @@ def run_analysis(task_id: str, video_path: str, start_gps: str):
     """
     tasks[task_id] = {"status": "processing", "progress": 0}
     
+    # If video_path is a URL, download it first
+    actual_video_path = video_path
+    if video_path.startswith('http'):
+        import requests
+        local_filename = f"temp_{task_id}_{os.path.basename(video_path.split('?')[0])}"
+        local_path = os.path.join(UPLOAD_DIR, local_filename)
+        try:
+            with requests.get(video_path, stream=True) as r:
+                r.raise_for_status()
+                with open(local_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            actual_video_path = local_path
+        except Exception as e:
+            tasks[task_id] = {"status": "failed", "error": f"Failed to download remote video: {e}"}
+            return
+
     lat, lon = map(float, start_gps.split(','))
-    # Move ~400m East for demo purposes (usually staying on land in coastal cities like SF/Tel-Aviv)
+    # Move ~400m East for demo purposes
     end_gps = f"{lat},{lon + 0.004}"
     
-    # Run analysis, output filename is analysis_<basename>.json in the current dir
-    # We should probably tell analyze_with_gemini where to put things or move them after
     cmd = [
         "python3", "analyze_with_gemini.py",
-        "--video", video_path,
+        "--video", actual_video_path,
         "--start_gps", start_gps,
         "--end_gps", end_gps,
         "--model", "gemini-3-flash-preview"
@@ -209,16 +289,20 @@ async def upload_video(
 async def process_preset(
     background_tasks: BackgroundTasks,
     video_id: str = Form(...),
-    start_gps: str = Form(...)
+    start_gps: str = Form(...),
+    video_url: Optional[str] = Form(None)
 ):
     task_id = str(uuid.uuid4())
-    video_path = os.path.join(PRESET_DATA_BASE, f"test/camera_videos/{video_id}.mp4")
     
-    if not os.path.exists(video_path):
-        return {"error": "Video not found"}
+    # Use the provided URL if available (from Supabase), otherwise look locally
+    target_path = video_url
+    if not target_path:
+        target_path = os.path.join(PRESET_DATA_BASE, f"test/camera_videos/{video_id}.mp4")
+        if not os.path.exists(target_path):
+            return {"error": "Video not found"}
 
     # Start analysis task
-    background_tasks.add_task(run_analysis, task_id, video_path, start_gps)
+    background_tasks.add_task(run_analysis, task_id, target_path, start_gps)
     
     return {"task_id": task_id}
 

@@ -71,7 +71,7 @@
             @click="onSpotClick(idx)"
           >
             <div class="spot-thumbnail" v-if="spot.frame_url">
-              <img :src="'http://localhost:8000' + spot.frame_url" alt="Spot frame" />
+              <img :src="getApiUrl(spot.frame_url)" alt="Spot frame" />
               <div class="play-overlay"><PlayIcon size="20" /></div>
             </div>
             <div class="spot-content">
@@ -115,6 +115,11 @@ const resultsMapRef = ref(null)
 const currentSpotIdx = ref(-1)
 const showSpots = ref(true)
 const showPath = ref(true)
+
+const getApiUrl = (path) => {
+  const base = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  return path.startsWith('http') ? path : `${base}${path}`
+}
 
 let map = null
 let markers = []
@@ -188,7 +193,7 @@ const showSpotInfo = (idx) => {
   const spot = props.result.spots[idx]
   const content = `
     <div style="color: #000; padding: 10px; max-width: 220px; font-family: sans-serif;">
-      <img src="http://localhost:8000${spot.frame_url}" style="width: 100%; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" />
+      <img src="${getApiUrl(spot.frame_url)}" style="width: 100%; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" />
       <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px; color: #1a73e8;">Spot Found! (${spot.timestamp_start})</div>
       <div style="font-size: 13px; line-height: 1.4; color: #3c4043;">${spot.reasoning}</div>
       <div style="margin-top: 8px; font-size: 11px; color: #70757a;">Confidence: ${(spot.confidence * 100).toFixed(0)}%</div>

@@ -168,13 +168,14 @@ const startAnalysis = async () => {
     if (selectedPreset.value) {
       const formData = new FormData()
       formData.append('video_id', selectedPreset.value.id)
+      formData.append('video_url', selectedPreset.value.url)
       formData.append('start_gps', `${coords.value.lat},${coords.value.lng}`)
-      response = await axios.post('http://localhost:8000/process-preset', formData)
+      response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/process-preset`, formData)
     } else {
       const formData = new FormData()
       formData.append('video', selectedFile.value)
       formData.append('start_gps', `${coords.value.lat},${coords.value.lng}`)
-      response = await axios.post('http://localhost:8000/upload', formData)
+      response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/upload`, formData)
     }
     
     taskId.value = response.data.task_id
@@ -189,7 +190,7 @@ const pollStatus = async () => {
   if (!taskId.value) return
   
   try {
-    const response = await axios.get(`http://localhost:8000/status/${taskId.value}`)
+    const response = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/status/${taskId.value}`)
     const data = response.data
     
     if (data.status === 'processing') {
@@ -200,7 +201,7 @@ const pollStatus = async () => {
       progress.value = 100
       statusMsg.value = 'Success!'
       analysisResult.value = data.result
-      videoUrl.value = 'http://localhost:8000' + data.video_url
+      videoUrl.value = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + data.video_url
       setTimeout(() => {
         state.value = 'results'
       }, 1000)

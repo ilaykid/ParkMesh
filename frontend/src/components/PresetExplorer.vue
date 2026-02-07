@@ -19,7 +19,7 @@
           @click="selectVideo(video)"
         >
           <div class="video-preview">
-            <img :src="'http://localhost:8000' + video.thumbnail" alt="Video Preview" />
+            <img :src="getApiUrl(video.thumbnail)" alt="Video Preview" />
             <div class="video-id-badge">#{{ video.id }}</div>
           </div>
           <div class="video-info">
@@ -50,13 +50,18 @@ const videos = ref([])
 const loading = ref(true)
 const searchQuery = ref('')
 
+const getApiUrl = (path) => {
+  const base = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  return path.startsWith('http') ? path : `${base}${path}`
+}
+
 const filteredVideos = computed(() => {
   return videos.value.filter(v => v.id.includes(searchQuery.value))
 })
 
 onMounted(async () => {
   try {
-    const res = await axios.get('http://localhost:8000/presets/list')
+    const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/presets/list`)
     videos.value = res.data
   } catch (err) {
     console.error('Failed to fetch presets list', err)

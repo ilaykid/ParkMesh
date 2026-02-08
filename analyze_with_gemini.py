@@ -159,7 +159,7 @@ if __name__ == "__main__":
     parser.add_argument("--video", type=str, required=True)
     parser.add_argument("--model", type=str, default="gemini-3-flash-preview")
     parser.add_argument("--no-optimize", action="store_true")
-    parser.add_argument("--fps", type=int, default=3)
+    parser.add_argument("--fps", type=int, default=5)
     parser.add_argument("--start_gps", type=str)
     parser.add_argument("--end_gps", type=str)
     args = parser.parse_args()

@@ -24,7 +24,7 @@ Analyze the provided video clip and output a list of precise timestamps (or fram
     - **Crosswalks**: Near an intersection crosswalk (within 5 meters).
     - **Bus Stops**: At or near marked bus stops.
     - **Pedestrian Crossings**: Blocking zebra crossings or pedestrian access.
-5.  **Confidence**: Only report spots where you are >80% confident it is a legal, safe parking space that does NOT violate any traffic laws.
+5.  **Confidence**: Report spots where you are **>70% confident** it is a legal, safe parking space. Prioritize recall over precision - if it looks like a valid gap, report it even if you cannot confirm every single detail (like exact curb color).
 
 ## Geolocation & Logic
 1.  **Telemetry Context**: You will be provided with a text log of GPS coordinates synced to the video timestamps.
